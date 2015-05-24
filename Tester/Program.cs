@@ -47,7 +47,7 @@ namespace Tester
 
         void _communicator_DataReceived(object sender, DataReceivedEventArgs e)
         {
-            Console.WriteLine(Encoding.UTF8.GetString(e.Content));
+            LoggerInstance.LogWriter.Info(Encoding.UTF8.GetString(e.Content));
         }
 
         public void Stop()
@@ -57,7 +57,6 @@ namespace Tester
 
         private void _communicator_EndpointDiscovered(object sender, EndpointDiscoveredEventArgs e)
         {
-            Console.WriteLine("Discovered Endpoint {0}:{1}", e.IpAddress, e.Port);
             _communicator.Subscribe(e.RemoteIpAddress, e.IpAddress, e.Port);
         }
     }

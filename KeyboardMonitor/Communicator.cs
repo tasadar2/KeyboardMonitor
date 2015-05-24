@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using log4net.Repository.Hierarchy;
 
 namespace KeyboardMonitor
 {
@@ -23,6 +25,7 @@ namespace KeyboardMonitor
         public const int DiscoverPort = 27831;
         private const int MaxDataSize = 512;
         private const ushort EndMessage = 0x512B;
+        private byte[] EndCommandBytes = BitConverter.GetBytes(EndMessage);
 
         public delegate void DataReceivedDelegate(object sender, DataReceivedEventArgs e);
         public event DataReceivedDelegate DataReceived;
@@ -43,6 +46,7 @@ namespace KeyboardMonitor
             StartReceive(data);
             _listenerSocket = data.Socket;
             ListenPort = ((IPEndPoint)data.Socket.LocalEndPoint).Port;
+            LoggerInstance.LogWriter.DebugFormat("Listening on {0}", data.Socket.LocalEndPoint);
         }
 
         public void Close()
@@ -63,6 +67,7 @@ namespace KeyboardMonitor
                 foreach (var broadcastInfo in GetBroadcastInformation())
                 {
                     var content = GenerateCommand(MessageType.Discover, broadcastInfo.Address);
+                    LoggerInstance.LogWriter.DebugFormat("Sending Discover to {0}", new IPEndPoint(broadcastInfo.BroadcastAddress, port));
                     Send(socket, content, new IPEndPoint(broadcastInfo.BroadcastAddress, port));
                 }
             }
@@ -71,12 +76,14 @@ namespace KeyboardMonitor
         public void Subscribe(IPAddress remoteIpAddress, IPAddress ipAddress, int port)
         {
             var content = GenerateCommand(MessageType.Subscribe, remoteIpAddress);
+            LoggerInstance.LogWriter.DebugFormat("Sending Subscribe to {0}", new IPEndPoint(ipAddress, port));
             Send(content, new IPEndPoint(ipAddress, port));
         }
 
         public void Unsubscribe(IPAddress remoteIpAddress, IPAddress ipAddress, int port)
         {
             var content = GenerateCommand(MessageType.Subscribe, remoteIpAddress);
+            LoggerInstance.LogWriter.DebugFormat("Sending Unsubscribe to {0}", new IPEndPoint(ipAddress, port));
             Send(content, new IPEndPoint(ipAddress, port));
         }
 
@@ -218,11 +225,14 @@ namespace KeyboardMonitor
 
         private byte[] GenerateCommand(MessageType messageType, IPAddress remoteIpAddress)
         {
-            return BitConverter.GetBytes((ushort)messageType)
-                               .Concat(remoteIpAddress.GetAddressBytes())
-                               .Concat(BitConverter.GetBytes((ushort)ListenPort))
-                               .Concat(BitConverter.GetBytes(EndMessage))
-                               .ToArray();
+            using (var writer = new MemoryStream(10))
+            {
+                writer.Write(BitConverter.GetBytes((ushort)messageType), 0, 2);
+                writer.Write(remoteIpAddress.GetAddressBytes(), 0, 4);
+                writer.Write(BitConverter.GetBytes((ushort)ListenPort), 0, 2);
+                writer.Write(EndCommandBytes, 0, 2);
+                return writer.ToArray();
+            }
         }
 
         private static IPEndPoint GetEndpoint(IEnumerable<byte> endpointBytes)
@@ -245,9 +255,11 @@ namespace KeyboardMonitor
                     // FF FF        Port
                     // 51 2B		End
                     case MessageType.Discover:
+                        LoggerInstance.LogWriter.DebugFormat("Received Discover on {0}", remoteEndpoint);
                         endpoint = GetEndpoint(data.Skip(2).Take(6));
 
                         var content = GenerateCommand(MessageType.Discovered, remoteEndpoint.Address);
+                        LoggerInstance.LogWriter.DebugFormat("Sending Discovered to {0}", endpoint);
                         Send(content, endpoint);
                         break;
 
@@ -257,6 +269,7 @@ namespace KeyboardMonitor
                     // FF FF        Port
                     // 51 2B		End
                     case MessageType.Discovered:
+                        LoggerInstance.LogWriter.DebugFormat("Received Discovered on {0}", remoteEndpoint);
                         endpoint = GetEndpoint(data.Skip(2).Take(6));
                         EndpointDiscovered.BeginInvoke(this, new EndpointDiscoveredEventArgs(remoteEndpoint.Address, endpoint.Address, endpoint.Port), null, null);
                         break;
@@ -267,6 +280,7 @@ namespace KeyboardMonitor
                     // FF FF        Port
                     // 51 2B		End
                     case MessageType.Subscribe:
+                        LoggerInstance.LogWriter.DebugFormat("Received Subscribe on {0}", remoteEndpoint);
                         endpoint = GetEndpoint(data.Skip(2).Take(6));
                         hash = BitConverter.ToUInt64(endpoint.Address.GetAddressBytes()
                                                                 .Concat(BitConverter.GetBytes(endpoint.Port).Take(2))
@@ -281,6 +295,7 @@ namespace KeyboardMonitor
                     // FF FF        Port
                     // 51 2B		End
                     case MessageType.Unsubscribe:
+                        LoggerInstance.LogWriter.DebugFormat("Received UnSubscribe on {0}", remoteEndpoint);
                         endpoint = GetEndpoint(data.Skip(2).Take(6));
                         hash = BitConverter.ToUInt64(endpoint.Address.GetAddressBytes()
                                                            .Concat(BitConverter.GetBytes(endpoint.Port).Take(2))
