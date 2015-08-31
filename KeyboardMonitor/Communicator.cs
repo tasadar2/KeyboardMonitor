@@ -71,7 +71,7 @@ namespace KeyboardMonitor
 
                 foreach (var broadcastInfo in GetBroadcastInformation())
                 {
-                    var content = GenerateCommand(MessageType.Discover, broadcastInfo.Address);
+                    var content = GenerateCommand(MessageType.Discover);
                     LoggerInstance.LogWriter.DebugFormat("Sending Discover to {0}", new IPEndPoint(broadcastInfo.BroadcastAddress, port));
                     Send(socket, content, new IPEndPoint(broadcastInfo.BroadcastAddress, port));
                 }
@@ -80,14 +80,14 @@ namespace KeyboardMonitor
 
         public void Subscribe(IPAddress remoteIpAddress, IPAddress ipAddress, int port)
         {
-            var content = GenerateCommand(MessageType.Subscribe, remoteIpAddress);
+            var content = GenerateCommand(MessageType.Subscribe);
             LoggerInstance.LogWriter.DebugFormat("Sending Subscribe to {0}", new IPEndPoint(ipAddress, port));
             Send(content, new IPEndPoint(ipAddress, port));
         }
 
         public void Unsubscribe(IPAddress remoteIpAddress, IPAddress ipAddress, int port)
         {
-            var content = GenerateCommand(MessageType.Subscribe, remoteIpAddress);
+            var content = GenerateCommand(MessageType.Subscribe);
             LoggerInstance.LogWriter.DebugFormat("Sending Unsubscribe to {0}", new IPEndPoint(ipAddress, port));
             Send(content, new IPEndPoint(ipAddress, port));
         }
@@ -228,12 +228,13 @@ namespace KeyboardMonitor
             { }
         }
 
-        private byte[] GenerateCommand(MessageType messageType, IPAddress remoteIpAddress)
+        private byte[] GenerateCommand(MessageType messageType)//, IPAddress remoteIpAddress)
         {
             using (var writer = new MemoryStream(10))
             {
                 writer.Write(messageType.Bytes, 0, 2);
-                writer.Write(remoteIpAddress.GetAddressBytes(), 0, 4);
+                writer.Write(new byte[] { 0, 0, 0, 0 }, 0, 4);
+                //writer.Write(remoteIpAddress.GetAddressBytes(), 0, 4);
                 writer.Write(_listenPortBytes, 0, 2);
                 writer.Write(_endCommandBytes, 0, 2);
                 return writer.ToArray();
@@ -251,7 +252,9 @@ namespace KeyboardMonitor
             if (length > 2)
             {
                 ulong hash;
-                var endpoint = GetEndpoint(data.SubArray(2, 6));
+                var address = remoteEndpoint.Address;
+                var port = EndianBitConverter.Big.ToUInt16(data, 6);
+                var endpoint = new IPEndPoint(address, port);
                 var command = data.SubArray(0, 2);
 
                 // Discover
@@ -263,7 +266,7 @@ namespace KeyboardMonitor
                 {
                     LoggerInstance.LogWriter.DebugFormat("Received Discover on {0}", remoteEndpoint);
 
-                    var content = GenerateCommand(MessageType.Discovered, remoteEndpoint.Address);
+                    var content = GenerateCommand(MessageType.Discovered);
                     LoggerInstance.LogWriter.DebugFormat("Sending Discovered to {0}", endpoint);
                     Send(content, endpoint);
                 }
@@ -276,7 +279,7 @@ namespace KeyboardMonitor
                 else if (command.ArrayEquals(MessageType.Discovered.Bytes))
                 {
                     LoggerInstance.LogWriter.DebugFormat("Received Discovered on {0}", remoteEndpoint);
-                    EndpointDiscovered.BeginInvoke(this, new EndpointDiscoveredEventArgs(remoteEndpoint.Address, endpoint.Address, endpoint.Port), null, null);
+                    EndpointDiscovered.BeginInvoke(this, new EndpointDiscoveredEventArgs(address, address, port), null, null);
                 }
 
                 // Subscribe
@@ -287,8 +290,8 @@ namespace KeyboardMonitor
                 else if (command.ArrayEquals(MessageType.Subscribe.Bytes))
                 {
                     LoggerInstance.LogWriter.DebugFormat("Received Subscribe on {0}", remoteEndpoint);
-                    hash = BitConverter.ToUInt64(endpoint.Address.GetAddressBytes()
-                                                         .Concat(BitConverter.GetBytes(endpoint.Port).Take(2))
+                    hash = BitConverter.ToUInt64(address.GetAddressBytes()
+                                                         .Concat(BitConverter.GetBytes(port).Take(2))
                                                          .Concat(new byte[2]).ToArray(), 0);
                     Endpoints[hash] = endpoint;
                 }
@@ -301,8 +304,8 @@ namespace KeyboardMonitor
                 else if (command.ArrayEquals(MessageType.Unsubscribe.Bytes))
                 {
                     LoggerInstance.LogWriter.DebugFormat("Received UnSubscribe on {0}", remoteEndpoint);
-                    hash = BitConverter.ToUInt64(endpoint.Address.GetAddressBytes()
-                                                         .Concat(BitConverter.GetBytes(endpoint.Port).Take(2))
+                    hash = BitConverter.ToUInt64(address.GetAddressBytes()
+                                                         .Concat(BitConverter.GetBytes(port).Take(2))
                                                          .Concat(new byte[2]).ToArray(), 0);
                     Endpoints.Remove(hash);
                 }
