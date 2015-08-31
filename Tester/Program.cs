@@ -57,7 +57,7 @@ namespace Tester
 
         private void _communicator_EndpointDiscovered(object sender, EndpointDiscoveredEventArgs e)
         {
-            _communicator.Subscribe(e.RemoteIpAddress, e.IpAddress, e.Port);
+            _communicator.Subscribe(e.IpAddress, e.Port);
         }
     }
 }

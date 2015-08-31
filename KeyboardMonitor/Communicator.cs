@@ -78,7 +78,7 @@ namespace KeyboardMonitor
             }
         }
 
-        public void Subscribe(IPAddress remoteIpAddress, IPAddress ipAddress, int port)
+        public void Subscribe(IPAddress ipAddress, int port)
         {
             var content = GenerateCommand(MessageType.Subscribe);
             LoggerInstance.LogWriter.DebugFormat("Sending Subscribe to {0}", new IPEndPoint(ipAddress, port));
@@ -219,7 +219,7 @@ namespace KeyboardMonitor
 
                 if (bytesReceived > 0)
                 {
-                    ProcessData((IPEndPoint)data.RemoteEndpoint, data.Buffer, bytesReceived);
+                    ProcessData(((IPEndPoint)data.RemoteEndpoint).Address, data.Buffer, bytesReceived);
                 }
 
                 StartReceive(data);
@@ -228,43 +228,33 @@ namespace KeyboardMonitor
             { }
         }
 
-        private byte[] GenerateCommand(MessageType messageType)//, IPAddress remoteIpAddress)
+        private byte[] GenerateCommand(MessageType messageType)
         {
-            using (var writer = new MemoryStream(10))
+            using (var writer = new MemoryStream(6))
             {
                 writer.Write(messageType.Bytes, 0, 2);
-                writer.Write(new byte[] { 0, 0, 0, 0 }, 0, 4);
-                //writer.Write(remoteIpAddress.GetAddressBytes(), 0, 4);
                 writer.Write(_listenPortBytes, 0, 2);
                 writer.Write(_endCommandBytes, 0, 2);
                 return writer.ToArray();
             }
         }
 
-        private static IPEndPoint GetEndpoint(IEnumerable<byte> endpointBytes)
-        {
-            var byteArray = endpointBytes.ToArray();
-            return new IPEndPoint(new IPAddress(BitConverter.ToUInt32(byteArray, 0)), EndianBitConverter.Big.ToUInt16(byteArray, 4));
-        }
-
-        private void ProcessData(IPEndPoint remoteEndpoint, byte[] data, int length)
+        private void ProcessData(IPAddress address, byte[] data, int length)
         {
             if (length > 2)
             {
                 ulong hash;
-                var address = remoteEndpoint.Address;
-                var port = EndianBitConverter.Big.ToUInt16(data, 6);
+                var port = EndianBitConverter.Big.ToUInt16(data, 2);
                 var endpoint = new IPEndPoint(address, port);
                 var command = data.SubArray(0, 2);
 
                 // Discover
                 // FF 15		Start
-                // FF FF FF FF  IP Address
                 // FF FF        Port
                 // 51 2B		End
                 if (command.ArrayEquals(MessageType.Discover.Bytes))
                 {
-                    LoggerInstance.LogWriter.DebugFormat("Received Discover on {0}", remoteEndpoint);
+                    LoggerInstance.LogWriter.DebugFormat("Received Discover on {0}", address);
 
                     var content = GenerateCommand(MessageType.Discovered);
                     LoggerInstance.LogWriter.DebugFormat("Sending Discovered to {0}", endpoint);
@@ -273,23 +263,21 @@ namespace KeyboardMonitor
 
                 // Discovered
                 // FF 16		Start
-                // FF FF FF FF  IP Address
                 // FF FF        Port
                 // 51 2B		End
                 else if (command.ArrayEquals(MessageType.Discovered.Bytes))
                 {
-                    LoggerInstance.LogWriter.DebugFormat("Received Discovered on {0}", remoteEndpoint);
-                    EndpointDiscovered.BeginInvoke(this, new EndpointDiscoveredEventArgs(address, address, port), null, null);
+                    LoggerInstance.LogWriter.DebugFormat("Received Discovered on {0}", address);
+                    EndpointDiscovered.BeginInvoke(this, new EndpointDiscoveredEventArgs(address, port), null, null);
                 }
 
                 // Subscribe
                 // FF 17		Start
-                // FF FF FF FF  IP Address
                 // FF FF        Port
                 // 51 2B		End
                 else if (command.ArrayEquals(MessageType.Subscribe.Bytes))
                 {
-                    LoggerInstance.LogWriter.DebugFormat("Received Subscribe on {0}", remoteEndpoint);
+                    LoggerInstance.LogWriter.DebugFormat("Received Subscribe on {0}", address);
                     hash = BitConverter.ToUInt64(address.GetAddressBytes()
                                                          .Concat(BitConverter.GetBytes(port).Take(2))
                                                          .Concat(new byte[2]).ToArray(), 0);
@@ -298,12 +286,11 @@ namespace KeyboardMonitor
 
                 // Unsubscribe
                 // FF 18		Start
-                // FF FF FF FF  IP Address
                 // FF FF        Port
                 // 51 2B		End
                 else if (command.ArrayEquals(MessageType.Unsubscribe.Bytes))
                 {
-                    LoggerInstance.LogWriter.DebugFormat("Received UnSubscribe on {0}", remoteEndpoint);
+                    LoggerInstance.LogWriter.DebugFormat("Received UnSubscribe on {0}", address);
                     hash = BitConverter.ToUInt64(address.GetAddressBytes()
                                                          .Concat(BitConverter.GetBytes(port).Take(2))
                                                          .Concat(new byte[2]).ToArray(), 0);
