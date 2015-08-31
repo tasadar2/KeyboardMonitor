@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Timers;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace KeyboardMonitor
 {
@@ -16,11 +15,12 @@ namespace KeyboardMonitor
 
         public void Start()
         {
-            Info = new Info();
-
-            Info.Processors = new CounterStatCollection("Processor", "% Processor Time");
-            Info.BytesReceived = new CounterStatCollection("Network Interface", "Bytes Received/sec");
-            Info.BytesSent = new CounterStatCollection("Network Interface", "Bytes Sent/sec");
+            Info = new Info
+            {
+                Processors = new CounterStatCollection("Processor", "% Processor Time", (counter, sum) => sum / counter.Count),
+                BytesReceived = new CounterStatCollection("Network Interface", "Bytes Received/sec"),
+                BytesSent = new CounterStatCollection("Network Interface", "Bytes Sent/sec")
+            };
 
             StatisticsTimer = new Timer(1000);
             StatisticsTimer.Elapsed += timer_Elapsed;
@@ -36,14 +36,14 @@ namespace KeyboardMonitor
 
             Info.Update();
 
-            foreach (var processor in Info.Processors)
-            {
-                Console.Write(processor.Value + " ");
-            }
-            Console.WriteLine();
+            //foreach (var processor in Info.Processors)
+            //{
+            //    Console.Write(processor.Value + " ");
+            //}
+            //Console.WriteLine();
 
-            Console.WriteLine(Info.BytesReceived.Value);
-            Console.WriteLine(Info.BytesSent.Value);
+            //Console.WriteLine(Info.BytesReceived.Value);
+            //Console.WriteLine(Info.BytesSent.Value);
 
             Communicator.SendToSubscribers(JsonConvert.SerializeObject(Info));
 
@@ -74,17 +74,12 @@ namespace KeyboardMonitor
     [JsonConverter(typeof(CounterStatCollectionSerializer))]
     public class CounterStatCollection : List<CounterStat>
     {
-        public string Name
-        {
-            get
-            {
-                return this.First().Name;
-            }
-        }
+        public string Name => this.First().Name;
 
         public float Value { get; set; }
+        public Func<CounterStatCollection, float, float> ValueCalculation { get; set; }
 
-        public CounterStatCollection(string category, string counterName)
+        public CounterStatCollection(string category, string counterName, Func<CounterStatCollection, float, float> valueCalculation = null)
         {
             var cpuCategory = new PerformanceCounterCategory(category);
             var instanceNames = cpuCategory.GetInstanceNames()
@@ -95,11 +90,13 @@ namespace KeyboardMonitor
             {
                 Add(new CounterStat(category, counterName, instanceName));
             }
+
+            ValueCalculation = valueCalculation ?? ((counter, sum) => sum);
         }
 
         public float Update()
         {
-            return Value = this.Sum(counterStat => counterStat.Update());
+            return Value = ValueCalculation(this, this.Sum(counterStat => counterStat.Update()));
         }
     }
 
@@ -111,7 +108,7 @@ namespace KeyboardMonitor
         /// <param name="writer">The <see cref="T:Newtonsoft.Json.JsonWriter"/> to write to.</param><param name="value">The value.</param><param name="serializer">The calling serializer.</param>
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
-            var cc = value as CounterStatCollection;
+            var cc = (CounterStatCollection)value;
             writer.WriteStartObject();
 
             writer.WritePropertyName("Name");
