@@ -7,25 +7,16 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-using log4net.Repository.Hierarchy;
+using MiscUtil.Conversion;
 
 namespace KeyboardMonitor
 {
-    public enum MessageType : ushort
-    {
-        Discover = 0xff15,
-        Discovered = 0xff16,
-        Subscribe = 0xff17,
-        Unsubscribe = 0xff18,
-        Message = 0xff19,
-    }
-
     public class Communicator
     {
         public const int DiscoverPort = 27831;
         private const int MaxDataSize = 512;
-        private const ushort EndMessage = 0x512B;
-        private byte[] EndCommandBytes = BitConverter.GetBytes(EndMessage);
+        private const short EndCommand = 0x512B;
+        private readonly byte[] _endCommandBytes = EndianBitConverter.Big.GetBytes(EndCommand);
 
         public delegate void DataReceivedDelegate(object sender, DataReceivedEventArgs e);
         public event DataReceivedDelegate DataReceived;
@@ -36,7 +27,21 @@ namespace KeyboardMonitor
         public Dictionary<uint, Message> Messages = new Dictionary<uint, Message>();
         public Dictionary<ulong, IPEndPoint> Endpoints = new Dictionary<ulong, IPEndPoint>();
 
-        public int ListenPort { get; private set; }
+        private byte[] _listenPortBytes;
+        private int _listenPort;
+        public int ListenPort
+        {
+            get
+            {
+                return _listenPort;
+            }
+            private set
+            {
+                _listenPort = value;
+                _listenPortBytes = EndianBitConverter.Big.GetBytes((short)value);
+            }
+        }
+
         private Socket _listenerSocket;
 
         public Communicator(int port = 0)
@@ -130,16 +135,16 @@ namespace KeyboardMonitor
                     var part = 0;
                     foreach (var partBytes in parts)
                     {
-                        var payload = BitConverter.GetBytes((ushort)MessageType.Message)
-                                                  .Concat(BitConverter.GetBytes(messageId))
-                                                  .Concat(BitConverter.GetBytes(contentBytes.Length))
-                                                  .Concat(BitConverter.GetBytes((ushort)parts.Count))
-                                                  .Concat(BitConverter.GetBytes((ushort)part))
-                                                  .Concat(BitConverter.GetBytes(index))
-                                                  .Concat(BitConverter.GetBytes((ushort)partBytes.Length))
-                                                  .Concat(partBytes)
-                                                  .Concat(BitConverter.GetBytes(EndMessage))
-                                                  .ToArray();
+                        var payload = MessageType.Message.Bytes
+                                                 .Concat(EndianBitConverter.Big.GetBytes(messageId))
+                                                 .Concat(EndianBitConverter.Big.GetBytes(contentBytes.Length))
+                                                 .Concat(EndianBitConverter.Big.GetBytes((ushort)parts.Count))
+                                                 .Concat(EndianBitConverter.Big.GetBytes((ushort)part))
+                                                 .Concat(EndianBitConverter.Big.GetBytes(index))
+                                                 .Concat(EndianBitConverter.Big.GetBytes((ushort)partBytes.Length))
+                                                 .Concat(partBytes)
+                                                 .Concat(_endCommandBytes)
+                                                 .ToArray();
 
                         foreach (var endpoint in Endpoints.Values)
                         {
@@ -227,10 +232,10 @@ namespace KeyboardMonitor
         {
             using (var writer = new MemoryStream(10))
             {
-                writer.Write(BitConverter.GetBytes((ushort)messageType), 0, 2);
+                writer.Write(messageType.Bytes, 0, 2);
                 writer.Write(remoteIpAddress.GetAddressBytes(), 0, 4);
-                writer.Write(BitConverter.GetBytes((ushort)ListenPort), 0, 2);
-                writer.Write(EndCommandBytes, 0, 2);
+                writer.Write(_listenPortBytes, 0, 2);
+                writer.Write(_endCommandBytes, 0, 2);
                 return writer.ToArray();
             }
         }
@@ -238,7 +243,7 @@ namespace KeyboardMonitor
         private static IPEndPoint GetEndpoint(IEnumerable<byte> endpointBytes)
         {
             var byteArray = endpointBytes.ToArray();
-            return new IPEndPoint(new IPAddress(BitConverter.ToUInt32(byteArray, 0)), BitConverter.ToUInt16(byteArray, 4));
+            return new IPEndPoint(new IPAddress(BitConverter.ToUInt32(byteArray, 0)), EndianBitConverter.Big.ToUInt16(byteArray, 4));
         }
 
         private void ProcessData(IPEndPoint remoteEndpoint, byte[] data, int length)
@@ -246,77 +251,75 @@ namespace KeyboardMonitor
             if (length > 2)
             {
                 ulong hash;
-                IPEndPoint endpoint;
-                switch ((MessageType)BitConverter.ToUInt16(data, 0))
+                var endpoint = GetEndpoint(data.SubArray(2, 6));
+                var command = data.SubArray(0, 2);
+
+                // Discover
+                // FF 15		Start
+                // FF FF FF FF  IP Address
+                // FF FF        Port
+                // 51 2B		End
+                if (command.ArrayEquals(MessageType.Discover.Bytes))
                 {
-                    // Discover
-                    // FF 15		Start
-                    // FF FF FF FF  IP Address
-                    // FF FF        Port
-                    // 51 2B		End
-                    case MessageType.Discover:
-                        LoggerInstance.LogWriter.DebugFormat("Received Discover on {0}", remoteEndpoint);
-                        endpoint = GetEndpoint(data.Skip(2).Take(6));
+                    LoggerInstance.LogWriter.DebugFormat("Received Discover on {0}", remoteEndpoint);
 
-                        var content = GenerateCommand(MessageType.Discovered, remoteEndpoint.Address);
-                        LoggerInstance.LogWriter.DebugFormat("Sending Discovered to {0}", endpoint);
-                        Send(content, endpoint);
-                        break;
+                    var content = GenerateCommand(MessageType.Discovered, remoteEndpoint.Address);
+                    LoggerInstance.LogWriter.DebugFormat("Sending Discovered to {0}", endpoint);
+                    Send(content, endpoint);
+                }
 
-                    // Discovered
-                    // FF 16		Start
-                    // FF FF FF FF  IP Address
-                    // FF FF        Port
-                    // 51 2B		End
-                    case MessageType.Discovered:
-                        LoggerInstance.LogWriter.DebugFormat("Received Discovered on {0}", remoteEndpoint);
-                        endpoint = GetEndpoint(data.Skip(2).Take(6));
-                        EndpointDiscovered.BeginInvoke(this, new EndpointDiscoveredEventArgs(remoteEndpoint.Address, endpoint.Address, endpoint.Port), null, null);
-                        break;
+                // Discovered
+                // FF 16		Start
+                // FF FF FF FF  IP Address
+                // FF FF        Port
+                // 51 2B		End
+                else if (command.ArrayEquals(MessageType.Discovered.Bytes))
+                {
+                    LoggerInstance.LogWriter.DebugFormat("Received Discovered on {0}", remoteEndpoint);
+                    EndpointDiscovered.BeginInvoke(this, new EndpointDiscoveredEventArgs(remoteEndpoint.Address, endpoint.Address, endpoint.Port), null, null);
+                }
 
-                    // Subscribe
-                    // FF 17		Start
-                    // FF FF FF FF  IP Address
-                    // FF FF        Port
-                    // 51 2B		End
-                    case MessageType.Subscribe:
-                        LoggerInstance.LogWriter.DebugFormat("Received Subscribe on {0}", remoteEndpoint);
-                        endpoint = GetEndpoint(data.Skip(2).Take(6));
-                        hash = BitConverter.ToUInt64(endpoint.Address.GetAddressBytes()
-                                                                .Concat(BitConverter.GetBytes(endpoint.Port).Take(2))
-                                                                .Concat(new byte[2]).ToArray(), 0);
-                        Endpoints[hash] = endpoint;
+                // Subscribe
+                // FF 17		Start
+                // FF FF FF FF  IP Address
+                // FF FF        Port
+                // 51 2B		End
+                else if (command.ArrayEquals(MessageType.Subscribe.Bytes))
+                {
+                    LoggerInstance.LogWriter.DebugFormat("Received Subscribe on {0}", remoteEndpoint);
+                    hash = BitConverter.ToUInt64(endpoint.Address.GetAddressBytes()
+                                                         .Concat(BitConverter.GetBytes(endpoint.Port).Take(2))
+                                                         .Concat(new byte[2]).ToArray(), 0);
+                    Endpoints[hash] = endpoint;
+                }
 
-                        break;
+                // Unsubscribe
+                // FF 18		Start
+                // FF FF FF FF  IP Address
+                // FF FF        Port
+                // 51 2B		End
+                else if (command.ArrayEquals(MessageType.Unsubscribe.Bytes))
+                {
+                    LoggerInstance.LogWriter.DebugFormat("Received UnSubscribe on {0}", remoteEndpoint);
+                    hash = BitConverter.ToUInt64(endpoint.Address.GetAddressBytes()
+                                                         .Concat(BitConverter.GetBytes(endpoint.Port).Take(2))
+                                                         .Concat(new byte[2]).ToArray(), 0);
+                    Endpoints.Remove(hash);
+                }
 
-                    // Unsubscribe
-                    // FF 18		Start
-                    // FF FF FF FF  IP Address
-                    // FF FF        Port
-                    // 51 2B		End
-                    case MessageType.Unsubscribe:
-                        LoggerInstance.LogWriter.DebugFormat("Received UnSubscribe on {0}", remoteEndpoint);
-                        endpoint = GetEndpoint(data.Skip(2).Take(6));
-                        hash = BitConverter.ToUInt64(endpoint.Address.GetAddressBytes()
-                                                           .Concat(BitConverter.GetBytes(endpoint.Port).Take(2))
-                                                           .Concat(new byte[2]).ToArray(), 0);
-                        Endpoints.Remove(hash);
-
-                        break;
-
-                    //  Message
-                    //  FF 19		Start
-                    //  FF FF FF FF	Message Identifier
-                    //  FF FF FF FF	Message Length
-                    //  FF FF		Message Parts
-                    //  FF FF		Message Part
-                    //  FF FF FF FF	Message Part Start
-                    //  FF FF		Message Part Length
-                    //  FF .. .. FF	Message Part Content
-                    //  51 2B		End
-                    case MessageType.Message:
-                        BuildReceivedMessage(data, length);
-                        break;
+                //  Message
+                //  FF 19		Start
+                //  FF FF FF FF	Message Identifier
+                //  FF FF FF FF	Message Length
+                //  FF FF		Message Parts
+                //  FF FF		Message Part
+                //  FF FF FF FF	Message Part Start
+                //  FF FF		Message Part Length
+                //  FF .. .. FF	Message Part Content
+                //  51 2B		End
+                else if (command.ArrayEquals(MessageType.Message.Bytes))
+                {
+                    BuildReceivedMessage(data, length);
                 }
             }
         }
@@ -325,21 +328,17 @@ namespace KeyboardMonitor
         {
             if (length > 20)
             {
-                var messageIdentifier = BitConverter.ToUInt32(data, 0x2);
-                var messageLength = BitConverter.ToUInt32(data, 0x6);
-                var messageParts = BitConverter.ToUInt16(data, 0xa);
-                var messagePart = BitConverter.ToUInt16(data, 0xc);
-                var messagePartStart = BitConverter.ToUInt32(data, 0xe);
-                var messagePartLength = BitConverter.ToUInt16(data, 0x12);
+                var messageIdentifier = EndianBitConverter.Big.ToUInt32(data, 0x2);
+                var messageLength = EndianBitConverter.Big.ToUInt32(data, 0x6);
+                var messageParts = EndianBitConverter.Big.ToUInt16(data, 0xa);
+                var messagePart = EndianBitConverter.Big.ToUInt16(data, 0xc);
+                var messagePartStart = EndianBitConverter.Big.ToUInt32(data, 0xe);
+                var messagePartLength = EndianBitConverter.Big.ToUInt16(data, 0x12);
 
-                if (length >= 0x14 + messagePartLength && BitConverter.ToUInt16(data, 0x14 + messagePartLength) == EndMessage)
+                if (length >= 0x14 + messagePartLength && data.SubArray(0x14 + messagePartLength, 2).ArrayEquals(_endCommandBytes))
                 {
                     Message message;
-                    if (Messages.ContainsKey(messageIdentifier))
-                    {
-                        message = Messages[messageIdentifier];
-                    }
-                    else
+                    if (!Messages.TryGetValue(messageIdentifier, out message))
                     {
                         Messages.Add(messageIdentifier, message = new Message(messageIdentifier, messageLength, messageParts));
                     }
