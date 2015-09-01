@@ -34,15 +34,15 @@ namespace Tester
 
     public class TestService
     {
-        private static Communicator _communicator;
+        private static SubscriptionCommunicator _communicator;
 
         public void Start()
         {
-            _communicator = new Communicator();
+            _communicator = new SubscriptionCommunicator();
             Thread.Sleep(5000);
             _communicator.EndpointDiscovered += _communicator_EndpointDiscovered;
             _communicator.DataReceived += _communicator_DataReceived;
-            _communicator.Discover(Communicator.DiscoverPort);
+            _communicator.Discover(SubscriptionCommunicator.DiscoverPort);
         }
 
         void _communicator_DataReceived(object sender, DataReceivedEventArgs e)

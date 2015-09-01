@@ -11,7 +11,7 @@ namespace KeyboardMonitor
     {
         public Timer StatisticsTimer;
         public Info Info { get; set; }
-        public Communicator Communicator;
+        public SubscriptionCommunicator Communicator;
 
         public void Start()
         {
@@ -26,7 +26,7 @@ namespace KeyboardMonitor
             StatisticsTimer.Elapsed += timer_Elapsed;
             StatisticsTimer.Start();
 
-            Communicator = new Communicator(Communicator.DiscoverPort);
+            Communicator = new SubscriptionCommunicator(SubscriptionCommunicator.DiscoverPort);
         }
 
 

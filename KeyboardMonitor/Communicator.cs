@@ -12,7 +12,7 @@ using MiscUtil.Conversion;
 
 namespace KeyboardMonitor
 {
-    public class Communicator
+    public class SubscriptionCommunicator
     {
         public const int DiscoverPort = 27831;
         private const int MaxDataSize = 512;
@@ -45,7 +45,7 @@ namespace KeyboardMonitor
 
         private Socket _listenerSocket;
 
-        public Communicator(int port = 0)
+        public SubscriptionCommunicator(int port = 0)
         {
             var data = new SocketData();
             data.Socket.Bind(new IPEndPoint(IPAddress.Any, port));
@@ -136,16 +136,20 @@ namespace KeyboardMonitor
                     var part = 0;
                     foreach (var partBytes in parts)
                     {
-                        var payload = EndianBitConverter.Big.GetBytes((ushort)MessageType.Message)
-                                                        .Concat(EndianBitConverter.Big.GetBytes(messageId))
-                                                        .Concat(EndianBitConverter.Big.GetBytes(contentBytes.Length))
-                                                        .Concat(EndianBitConverter.Big.GetBytes((ushort)parts.Count))
-                                                        .Concat(EndianBitConverter.Big.GetBytes((ushort)part))
-                                                        .Concat(EndianBitConverter.Big.GetBytes(index))
-                                                        .Concat(EndianBitConverter.Big.GetBytes((ushort)partBytes.Length))
-                                                        .Concat(partBytes)
-                                                        .Concat(_endCommandBytes)
-                                                        .ToArray();
+                        byte[] payload;
+                        using (var writer = new MemoryStream(0x16 + partBytes.Length))
+                        {
+                            writer.Write(EndianBitConverter.Big.GetBytes((ushort)MessageType.Message), 0, 2);
+                            writer.Write(EndianBitConverter.Big.GetBytes(messageId), 0, 4);
+                            writer.Write(EndianBitConverter.Big.GetBytes(contentBytes.Length), 0, 4);
+                            writer.Write(EndianBitConverter.Big.GetBytes((ushort)parts.Count), 0, 2);
+                            writer.Write(EndianBitConverter.Big.GetBytes((ushort)part), 0, 2);
+                            writer.Write(EndianBitConverter.Big.GetBytes(index), 0, 4);
+                            writer.Write(EndianBitConverter.Big.GetBytes((ushort)partBytes.Length), 0, 2);
+                            writer.Write(partBytes, 0, partBytes.Length);
+                            writer.Write(_endCommandBytes, 0, 2);
+                            payload = writer.ToArray();
+                        }
 
                         foreach (var endpoint in Endpoints.Values)
                         {
