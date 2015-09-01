@@ -7,6 +7,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using KeyboardMonitor.Network.Broadcast;
 using MiscUtil.Conversion;
 
 namespace KeyboardMonitor
@@ -69,7 +70,7 @@ namespace KeyboardMonitor
             {
                 socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, 1);
 
-                foreach (var broadcastInfo in GetBroadcastInformation())
+                foreach (var broadcastInfo in BroadcastNetwork.GetBroadcastInformation())
                 {
                     var content = GenerateCommand(MessageType.Discover);
                     LoggerInstance.LogWriter.DebugFormat("Sending Discover to {0}", new IPEndPoint(broadcastInfo.BroadcastAddress, port));
@@ -171,38 +172,6 @@ namespace KeyboardMonitor
         private void Send(Socket socket, byte[] content, EndPoint endpoint)
         {
             socket.BeginSendTo(content, 0, content.Length, SocketFlags.None, endpoint, null, null);
-        }
-
-        private IEnumerable<BroadcastInfo> GetBroadcastInformation()
-        {
-            var info = new List<BroadcastInfo>();
-            foreach (var networkInterface in NetworkInterface.GetAllNetworkInterfaces().Where(ni => ni.OperationalStatus == OperationalStatus.Up))
-            {
-                foreach (var unicastInfo in networkInterface.GetIPProperties().UnicastAddresses)
-                {
-                    if (unicastInfo.Address.AddressFamily == AddressFamily.InterNetwork)
-                    {
-                        var address = BitConverter.ToUInt32(unicastInfo.Address.GetAddressBytes(), 0);
-                        var mask = BitConverter.ToUInt32(unicastInfo.IPv4Mask.GetAddressBytes(), 0);
-
-                        info.Add(new BroadcastInfo
-                        {
-                            Address = unicastInfo.Address,
-                            ListenAddress = new IPAddress(address & mask),
-                            BroadcastAddress = new IPAddress(address | (~mask)),
-                        });
-                    }
-                }
-            }
-
-            return info;
-        }
-
-        public class BroadcastInfo
-        {
-            public IPAddress Address { get; set; }
-            public IPAddress ListenAddress { get; set; }
-            public IPAddress BroadcastAddress { get; set; }
         }
 
         private void StartReceive(SocketData data)
