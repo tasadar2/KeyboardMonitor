@@ -115,13 +115,13 @@ namespace KeyboardMonitor
             serializer.Serialize(writer, cc.Name);
 
             writer.WritePropertyName("Value");
-            serializer.Serialize(writer, cc.Value);
+            serializer.Serialize(writer, Math.Round(cc.Value, 2));
 
             writer.WritePropertyName("Values");
             writer.WriteStartArray();
             foreach (var v in cc.Select(t => t.Value))
             {
-                serializer.Serialize(writer, v);
+                serializer.Serialize(writer,Math.Round( v,2));
             }
             writer.WriteEndArray();
 
