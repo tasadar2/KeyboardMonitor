@@ -36,15 +36,6 @@ namespace KeyboardMonitor
 
             Info.Update();
 
-            //foreach (var processor in Info.Processors)
-            //{
-            //    Console.Write(processor.Value + " ");
-            //}
-            //Console.WriteLine();
-
-            //Console.WriteLine(Info.BytesReceived.Value);
-            //Console.WriteLine(Info.BytesSent.Value);
-
             Communicator.SendToSubscribers(JsonConvert.SerializeObject(Info));
 
             StatisticsTimer.Start();
