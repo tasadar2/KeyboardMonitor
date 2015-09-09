@@ -1,4 +1,6 @@
-﻿using System.Timers;
+﻿using System;
+using System.Timers;
+using KeyboardMonitor.Gathering.FrameRate;
 using KeyboardMonitor.Stats;
 using Newtonsoft.Json;
 
@@ -9,6 +11,7 @@ namespace KeyboardMonitor
         public Timer StatisticsTimer;
         public Info Info { get; set; }
         public SubscriptionCommunicator Communicator;
+        public FrapsService FrapsService;
 
         public void Start()
         {
@@ -19,19 +22,21 @@ namespace KeyboardMonitor
                 BytesSent = new CounterStatCollection("Network Interface", "Bytes Sent/sec")
             };
 
+            FrapsService = new FrapsService();
+
             StatisticsTimer = new Timer(1000);
             StatisticsTimer.Elapsed += timer_Elapsed;
             StatisticsTimer.Start();
 
             Communicator = new SubscriptionCommunicator(SubscriptionCommunicator.DiscoverPort);
         }
-
-
+        
         private void timer_Elapsed(object sender, ElapsedEventArgs e)
         {
             StatisticsTimer.Stop();
-
             Info.Update();
+            var x = FrapsService.GetFrapsData();
+            LoggerInstance.LogWriter.Debug(x.FramesPerSecond);
 
             Communicator.SendToSubscribers(JsonConvert.SerializeObject(Info));
 

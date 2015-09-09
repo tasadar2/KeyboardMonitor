@@ -57,6 +57,9 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Gathering\FrameRate\FrapsService.cs" />
+    <Compile Include="Gathering\FrameRate\FrapsData.cs" />
+    <Compile Include="Win32\Kernel32.cs" />
     <Compile Include="Stats\CounterStatCollection.cs" />
     <Compile Include="Stats\CounterStat.cs" />
     <Compile Include="Serialization\CounterStatCollectionSerializer.cs" />
