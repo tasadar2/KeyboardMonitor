@@ -54,6 +54,7 @@ namespace KeyboardMonitor
         Subscribe = 0xff17,
         Unsubscribe = 0xff18,
         Message = 0xff19,
+        FramesPerSecond = 0xff1a,
     }
 
 }

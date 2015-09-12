@@ -7,6 +7,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using KeyboardMonitor.Gathering.FrameRate;
 using KeyboardMonitor.Network.Broadcast;
 using MiscUtil.Conversion;
 
@@ -91,6 +92,29 @@ namespace KeyboardMonitor
             var content = GenerateCommand(MessageType.Subscribe);
             LoggerInstance.LogWriter.DebugFormat("Sending Unsubscribe to {0}", new IPEndPoint(ipAddress, port));
             Send(content, new IPEndPoint(ipAddress, port));
+        }
+
+        //  FF 1A		Start
+        //  FF FF FF FF	FPS
+        //  51 2B		End
+        public void SendFrapsToSubscribers(FrapsData frapsData)
+        {
+            byte[] payload;
+            using (var writer = new MemoryStream(0x08))
+            {
+                writer.Write(EndianBitConverter.Big.GetBytes((ushort)MessageType.FramesPerSecond), 0, 2);
+                writer.Write(EndianBitConverter.Big.GetBytes(frapsData.FramesPerSecond), 0, 4);
+                writer.Write(_endCommandBytes, 0, 2);
+                payload = writer.ToArray();
+            }
+
+            using (var socket = SocketData.CreateSocket())
+            {
+                foreach (var endpoint in Endpoints.Values)
+                {
+                    Send(socket, payload, endpoint);
+                }
+            }
         }
 
         //  FF 19		Start

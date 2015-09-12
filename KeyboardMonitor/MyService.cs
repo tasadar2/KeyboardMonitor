@@ -1,5 +1,4 @@
-﻿using System;
-using System.Timers;
+﻿using System.Threading;
 using KeyboardMonitor.Gathering.FrameRate;
 using KeyboardMonitor.Stats;
 using Newtonsoft.Json;
@@ -9,6 +8,7 @@ namespace KeyboardMonitor
     public class KeyboardMonitorService
     {
         public Timer StatisticsTimer;
+        public Timer RealtimeTimer;
         public Info Info { get; set; }
         public SubscriptionCommunicator Communicator;
         public FrapsService FrapsService;
@@ -23,28 +23,34 @@ namespace KeyboardMonitor
             };
 
             FrapsService = new FrapsService();
-
-            StatisticsTimer = new Timer(1000);
-            StatisticsTimer.Elapsed += timer_Elapsed;
-            StatisticsTimer.Start();
-
             Communicator = new SubscriptionCommunicator(SubscriptionCommunicator.DiscoverPort);
+
+            StatisticsTimer = new Timer(Timer_Elapsed, null, 0, 1000);
+            RealtimeTimer = new Timer(Realtime_Elapsed, null, 0, 333);
         }
-        
-        private void timer_Elapsed(object sender, ElapsedEventArgs e)
+
+        private void Timer_Elapsed(object state)
         {
-            StatisticsTimer.Stop();
             Info.Update();
-            var x = FrapsService.GetFrapsData();
-            LoggerInstance.LogWriter.Debug(x.FramesPerSecond);
 
             Communicator.SendToSubscribers(JsonConvert.SerializeObject(Info));
+        }
 
-            StatisticsTimer.Start();
+        private FrapsData _lastFrapsData;
+        private void Realtime_Elapsed(object state)
+        {
+            var frapsData = FrapsService.GetFrapsData();
+
+            if (frapsData.FramesPerSecond != _lastFrapsData.FramesPerSecond)
+            {
+                _lastFrapsData = frapsData;
+                Communicator.SendFrapsToSubscribers(frapsData);
+            }
         }
 
         public void Stop()
         {
+            StatisticsTimer.Change(Timeout.Infinite, Timeout.Infinite);
             Communicator.Close();
         }
 
