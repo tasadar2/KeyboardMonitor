@@ -26,7 +26,7 @@ namespace KeyboardMonitor
             Communicator = new SubscriptionCommunicator(SubscriptionCommunicator.DiscoverPort);
 
             StatisticsTimer = new Timer(Timer_Elapsed, null, 0, 1000);
-            RealtimeTimer = new Timer(Realtime_Elapsed, null, 0, 333);
+            RealtimeTimer = new Timer(Realtime_Elapsed, null, 0, 150);
         }
 
         private void Timer_Elapsed(object state)
