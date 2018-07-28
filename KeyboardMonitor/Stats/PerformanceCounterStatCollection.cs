@@ -36,23 +36,4 @@ namespace KeyboardMonitor.Stats
             return Value = ValueCalculation(this, this.Sum(counterStat => counterStat.Update()));
         }
     }
-
-    public class HardwareStat : ICounterStat
-    {
-        public string Name { get; }
-        public float Value { get; }
-
-        public float Update()
-        {
-            throw new NotImplementedException();
-        }
-    }
-
-    public class HardwareService
-    {
-        public HardwareService()
-        {
-            
-        }
-    }
 }
