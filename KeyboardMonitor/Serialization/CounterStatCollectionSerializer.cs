@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KeyboardMonitor.Stats;
+using KeyboardMonitor.Stats.Support;
 using Newtonsoft.Json;
 
 namespace KeyboardMonitor.Serialization
@@ -13,7 +14,7 @@ namespace KeyboardMonitor.Serialization
         /// <param name="writer">The <see cref="T:Newtonsoft.Json.JsonWriter"/> to write to.</param><param name="value">The value.</param><param name="serializer">The calling serializer.</param>
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
-            var cc = (CounterStatCollection)value;
+            var cc = (ICounterStatCollection)value;
             writer.WriteStartObject();
 
             writer.WritePropertyName("Name");
@@ -26,7 +27,7 @@ namespace KeyboardMonitor.Serialization
             writer.WriteStartArray();
             foreach (var v in cc.Select(t => t.Value))
             {
-                serializer.Serialize(writer,Math.Round( v,2));
+                serializer.Serialize(writer, Math.Round(v, 2));
             }
             writer.WriteEndArray();
 

@@ -1,9 +1,10 @@
 ﻿using System.Diagnostics;
+using KeyboardMonitor.Stats.Support;
 using Newtonsoft.Json;
 
 namespace KeyboardMonitor.Stats
 {
-    public class CounterStat
+    public class PerformanceCounterStat : ICounterStat
     {
         [JsonIgnore]
         public string Name
@@ -26,12 +27,12 @@ namespace KeyboardMonitor.Stats
         public float Value { get; set; }
         private readonly PerformanceCounter _counter;
 
-        public CounterStat(string category, string name)
+        public PerformanceCounterStat(string category, string name)
         {
             _counter = new PerformanceCounter(category, name);
         }
 
-        public CounterStat(string category, string name, string instance)
+        public PerformanceCounterStat(string category, string name, string instance)
         {
             _counter = new PerformanceCounter(category, name, instance);
         }

@@ -17,19 +17,19 @@ namespace KeyboardMonitor
         {
             Info = new Info
             {
-                Processors = new CounterStatCollection("Processor", "% Processor Time", (counter, sum) => sum / counter.Count),
-                BytesReceived = new CounterStatCollection("Network Interface", "Bytes Received/sec"),
-                BytesSent = new CounterStatCollection("Network Interface", "Bytes Sent/sec")
+                Processors = new PerformanceCounterStatCollection("Processor", "% Processor Time", (counter, sum) => sum / counter.Count),
+                BytesReceived = new PerformanceCounterStatCollection("Network Interface", "Bytes Received/sec"),
+                BytesSent = new PerformanceCounterStatCollection("Network Interface", "Bytes Sent/sec")
             };
 
             FrapsService = new FrapsService();
             Communicator = new SubscriptionCommunicator(SubscriptionCommunicator.DiscoverPort);
 
-            StatisticsTimer = new Timer(Timer_Elapsed, null, 0, 1000);
+            StatisticsTimer = new Timer(Statistics_Elapsed, null, 0, 1000);
             RealtimeTimer = new Timer(Realtime_Elapsed, null, 0, 150);
         }
 
-        private void Timer_Elapsed(object state)
+        private void Statistics_Elapsed(object state)
         {
             Info.Update();
 
@@ -37,6 +37,7 @@ namespace KeyboardMonitor
         }
 
         private FrapsData _lastFrapsData;
+
         private void Realtime_Elapsed(object state)
         {
             var frapsData = FrapsService.GetFrapsData();
@@ -51,22 +52,10 @@ namespace KeyboardMonitor
         public void Stop()
         {
             StatisticsTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            RealtimeTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            StatisticsTimer.Dispose();
+            RealtimeTimer.Dispose();
             Communicator.Close();
-        }
-
-    }
-
-    public class Info
-    {
-        public CounterStatCollection Processors { get; set; }
-        public CounterStatCollection BytesReceived { get; set; }
-        public CounterStatCollection BytesSent { get; set; }
-
-        public void Update()
-        {
-            Processors.Update();
-            BytesReceived.Update();
-            BytesSent.Update();
         }
     }
 }
